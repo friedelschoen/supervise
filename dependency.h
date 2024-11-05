@@ -15,7 +15,8 @@ extern struct supervisor* supervisors;
 extern int                nsupervisors;
 
 /* Functions */
-void loaddependencies(void);
+void enabledependencies(void);
+void disabledependencies(void);
 void handlecommand(int command);
 void handlechild(pid_t pid, int stat);
 

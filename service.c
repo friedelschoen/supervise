@@ -1,5 +1,6 @@
 #include "service.h"
 
+#include "dependency.h"
 #include "supervise.h"
 #include "utils.h"
 
@@ -14,6 +15,8 @@ extern pid_t service;
 void startservice(void) {
 	if (status == STATUS_RUNNING)
 		return;
+
+	enabledependencies();
 
 	while ((service = fork()) == -1) {
 		fprintf(stderr, "warn: unable to fork\n");

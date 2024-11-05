@@ -30,7 +30,7 @@ HEADER = \
 	arg.h \
 	buffer.h \
 	dependency.h \
-	lock.h \
+	handler.h \
 	service.h \
 	supervise.h \
 	utils.h
@@ -38,7 +38,7 @@ HEADER = \
 OBJECTS = \
 	buffer.o \
 	dependency.o \
-	lock.o \
+	handler.o \
 	service.o \
 	supervise.o \
 	utils.o

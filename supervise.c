@@ -2,7 +2,6 @@
 
 #include "arg.h"
 #include "dependency.h"
-#include "lock.h"
 #include "service.h"
 #include "utils.h"
 
@@ -81,8 +80,7 @@ static void sigchild(int signum) {
 }
 
 int main(int argc, char** argv) {
-	int         lockfd;
-	int         asdependency = 0;
+	int         nostart = 0;
 	const char* servicedir;
 
 	signal(SIGCHLD, sigchild);
@@ -92,8 +90,8 @@ int main(int argc, char** argv) {
 
 	ARGBEGIN
 	switch (OPT) {
-		case 'd':
-			asdependency = 1;
+		case 's':
+			nostart = 1;
 			break;
 	}
 	ARGEND
@@ -111,23 +109,14 @@ int main(int argc, char** argv) {
 
 	servicename = strchr(servicedir, '/') ? strrchr(servicedir, '/') + 1 : servicedir;
 
-	fprintf(stderr, "%s :: starting supervisor\n", servicename);
-
 	mkdir("supervise", 0777);
 	setstatus(STATUS_WAITING);
 
-	lockfd = acquirelock();
-
-	fprintf(stderr, "%s :: starting dependencies\n", servicename);
-	loaddependencies();
-
-	if (!asdependency) {
+	if (!nostart) {
 		restart = 1;
 		startservice();
 	}
 
-	fprintf(stderr, "%s :: listening for commands\n", servicename);
 	controlloop();
-	releaselock(lockfd);
 	return 0;
 }

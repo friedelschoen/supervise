@@ -15,9 +15,6 @@ void setstatus(int stat) {
 	if (stat == status)
 		return;
 
-	fprintf(stderr, "%s :: updated status to from %s to %s\n", servicename, status_names[status],
-	        status_names[stat]);
-
 	status        = stat;
 	status_change = time(NULL);
 

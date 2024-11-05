@@ -1,7 +1,6 @@
 #include "dependency.h"
 
 #include "buffer.h"
-#include "lock.h"
 #include "supervise.h"
 #include "utils.h"
 
@@ -18,21 +17,18 @@ int                dependency_count = 0;
 struct supervisor* supervisors      = NULL;
 int                nsupervisors     = 0;
 
-
 void startsupervisor(struct supervisor* service) {
 	while ((service->pid = fork()) == -1) {
-		fprintf(stderr, "warn: unable to fork");
+		fprintf(stderr, "warn: unable to fork: %s\n", strerror(errno));
 		sleep(1);
 	}
 	if (service->pid == 0) {
 		/* child */
-		execlp(myself, myself, "-d", service->name, NULL);
+		execlp(myself, myself, "-s", service->name, NULL);
 		fprintf(stderr, "error: unable to execute supervisor for %s: %s\n", service->name,
 		        strerror(errno));
 		_exit(1);
 	}
-
-	printf("started supervisor\n");
 
 	return;
 }
@@ -48,17 +44,21 @@ static void addsupervior(const char* service) {
 	return;
 }
 
-static int sendcommand(const char* service, const char* command) {
+static int sendcommand(const char* service, int startit, const char* command) {
 	char path[PATH_MAX];
 	int  control_fp;
-	int  retries = 3;    // Retry a few times if the write fails
+	int  retries = 5;    // Retry a few times if the write fails
 
 	/* Send start command to dependency */
 	snprintf(path, sizeof(path), "%s/supervise/control", service);
 
-	while ((control_fp = open(path, O_WRONLY | O_NONBLOCK)) == -1 && errno == ENOENT &&
-	       errno == ENXIO) {
+	while ((control_fp = open(path, O_WRONLY | O_NONBLOCK)) == -1 &&
+	       (errno == ENOENT || errno == ENXIO)) {
+
 		setstatus(STATUS_WAITING);
+		if (errno == ENXIO && startit)
+			addsupervior(service);
+
 		sleep(1);
 	}
 
@@ -80,11 +80,9 @@ static int sendcommand(const char* service, const char* command) {
 	return 0;
 }
 
-void loaddependencies(void) {
-	char  path[PATH_MAX];
+void enabledependencies(void) {
 	char *buffer, *depend;
 	FILE* fp;
-	int   ret;
 
 	if (!(fp = fopen("depends", "r")))
 		return;
@@ -100,22 +98,30 @@ void loaddependencies(void) {
 		if (*depend == '\0')
 			continue;
 
-		/* Check if the supervisor lock exists */
-		snprintf(path, sizeof(path), "%s/supervise/lock", depend);
-		ret = testlock(path);
-		if (ret == -1) {
-			fprintf(stderr, "warn: unable to test lock of service %s: %s\n", depend,
-			        strerror(errno));
-			continue;
-		}
-		if (ret == 0) {
-			fprintf(stderr, "start supervisor for %s\n", depend);
-			addsupervior(depend);
-		} else {
-			fprintf(stderr, "supervisor for %s already started\n", depend);
-		}
+		sendcommand(depend, 1, "+");
+	}
+	free(buffer);
+}
 
-		sendcommand(depend, "+");
+void disabledependencies(void) {
+	char *buffer, *depend;
+	FILE* fp;
+
+	if (!(fp = fopen("depends", "r")))
+		return;
+
+	if (!(buffer = loadbuffermalloc(fp, NULL)))
+		return;
+
+	fclose(fp);
+
+	/* Loop through dependencies */
+	while ((depend = strsep(&buffer, "\n"))) {
+		depend = strip(depend);
+		if (*depend == '\0')
+			continue;
+
+		sendcommand(depend, 0, "-");
 	}
 	free(buffer);
 }

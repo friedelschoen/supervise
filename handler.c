@@ -4,12 +4,15 @@
 #include "supervise.h"
 #include "utils.h"
 
+#include <ctype.h>
 #include <stdio.h>
 #include <sys/wait.h>
 
 
 void handlecommand(int command) {
-	printf("%s :: received command '%c'\n", servicename, command);
+	if (!isgraph(command))
+		return;
+
 	switch (command) {
 		case 's': /* Start command */
 			startservice();
@@ -28,7 +31,7 @@ void handlecommand(int command) {
 				stopservice();
 			break;
 		default:
-			fprintf(stderr, "Unknown command: %c\n", command);
+			fprintf(stderr, "warn: unknown command: %c\n", command);
 			break;
 	}
 }
@@ -48,4 +51,6 @@ void handlechild(pid_t pid, int stat) {
 
 	if (restart || dependency_count > 0)
 		startservice();
+	else
+		disabledependencies();
 }
