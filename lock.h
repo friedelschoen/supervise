@@ -1,3 +1,5 @@
+#pragma once
+
 int acquirelock(void);
 
 void releaselock(int fd);

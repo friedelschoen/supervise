@@ -29,11 +29,19 @@ MAN5 =
 HEADER = \
 	arg.h \
 	buffer.h \
-	lock.h
+	dependency.h \
+	lock.h \
+	service.h \
+	supervise.h \
+	utils.h
 
 OBJECTS = \
 	buffer.o \
-	lock.o
+	dependency.o \
+	lock.o \
+	service.o \
+	supervise.o \
+	utils.o
 
 CLEAN = \
 	$(BINS) \
