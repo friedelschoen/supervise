@@ -12,10 +12,39 @@
 #include <string.h>
 #include <unistd.h>
 
-
 int                dependency_count = 0;
 struct supervisor* supervisors      = NULL;
 int                nsupervisors     = 0;
+
+char** enableddeps  = NULL;
+int    nenableddeps = 0;
+
+/* Check if a dependency is enabled */
+static int isenabled(const char* dependency) {
+	for (int i = 0; i < nenableddeps; i++) {
+		if (strcmp(enableddeps[i], dependency) == 0)
+			return 1;
+	}
+	return 0;
+}
+
+/* Add a dependency to the enabled list */
+static void enabledependency(const char* dependency) {
+	enableddeps               = realloc(enableddeps, (nenableddeps + 1) * sizeof(char*));
+	enableddeps[nenableddeps] = strdup(dependency);
+	nenableddeps++;
+}
+
+/* Remove a dependency from the enabled list */
+static void disabledependency(const char* dependency) {
+	for (int i = 0; i < nenableddeps; i++) {
+		if (strcmp(enableddeps[i], dependency) == 0) {
+			free(enableddeps[i]);
+			enableddeps[i] = enableddeps[--nenableddeps];
+			return;
+		}
+	}
+}
 
 void startsupervisor(struct supervisor* service) {
 	while ((service->pid = fork()) == -1) {
@@ -29,7 +58,6 @@ void startsupervisor(struct supervisor* service) {
 		        strerror(errno));
 		_exit(1);
 	}
-
 	return;
 }
 
@@ -40,8 +68,6 @@ static void addsupervior(const char* service) {
 	startsupervisor(&supervisors[nsupervisors]);
 
 	nsupervisors++;
-
-	return;
 }
 
 static int sendcommand(const char* service, int startit, const char* command) {
@@ -98,7 +124,11 @@ void enabledependencies(void) {
 		if (*depend == '\0')
 			continue;
 
-		sendcommand(depend, 1, "+");
+		/* Only send '+' if the dependency is not already enabled */
+		if (!isenabled(depend)) {
+			sendcommand(depend, 1, "+");
+			enabledependency(depend);
+		}
 	}
 	free(buffer);
 }
@@ -121,7 +151,11 @@ void disabledependencies(void) {
 		if (*depend == '\0')
 			continue;
 
-		sendcommand(depend, 0, "-");
+		/* Only send '-' if the dependency is currently enabled */
+		if (isenabled(depend)) {
+			sendcommand(depend, 0, "-");
+			disabledependency(depend);
+		}
 	}
 	free(buffer);
 }

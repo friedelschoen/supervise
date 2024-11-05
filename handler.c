@@ -13,11 +13,14 @@ void handlecommand(int command) {
 	if (!isgraph(command))
 		return;
 
+	printf("%s - %c\n", servicename, command);
 	switch (command) {
 		case 's': /* Start command */
+			restart = 1;
 			startservice();
 			break;
 		case 't': /* Stop command */
+			restart = 0;
 			stopservice();
 			break;
 		case '+': /* Dependency + */
