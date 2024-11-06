@@ -28,24 +28,6 @@ static int isenabled(const char* dependency) {
 	return 0;
 }
 
-/* Add a dependency to the enabled list */
-static void enabledependency(const char* dependency) {
-	enableddeps               = realloc(enableddeps, (nenableddeps + 1) * sizeof(char*));
-	enableddeps[nenableddeps] = strdup(dependency);
-	nenableddeps++;
-}
-
-/* Remove a dependency from the enabled list */
-static void disabledependency(const char* dependency) {
-	for (int i = 0; i < nenableddeps; i++) {
-		if (strcmp(enableddeps[i], dependency) == 0) {
-			free(enableddeps[i]);
-			enableddeps[i] = enableddeps[--nenableddeps];
-			return;
-		}
-	}
-}
-
 void startsupervisor(struct supervisor* service) {
 	while ((service->pid = fork()) == -1) {
 		fprintf(stderr, "warn: unable to fork: %s\n", strerror(errno));
@@ -106,8 +88,9 @@ static int sendcommand(const char* service, int startit, const char* command) {
 	return 0;
 }
 
-void enabledependencies(void) {
+void loopdependencies(void (*callback)(char*)) {
 	char *buffer, *depend;
+	char  path[PATH_MAX];
 	FILE* fp;
 
 	if (!(fp = fopen("depends", "r")))
@@ -124,38 +107,43 @@ void enabledependencies(void) {
 		if (*depend == '\0')
 			continue;
 
-		/* Only send '+' if the dependency is not already enabled */
-		if (!isenabled(depend)) {
-			sendcommand(depend, 1, "+");
-			enabledependency(depend);
+
+		if (access(depend, F_OK) != 0) {
+			snprintf(path, sizeof(path), "%s/%s", servicedir, depend);
+			if (access(path, F_OK) != 0) {
+				fprintf(stderr, "error: dependency not found: %s\n", depend);
+				return;
+			}
+			depend = path;
 		}
+
+		callback(depend);
 	}
 	free(buffer);
 }
 
-void disabledependencies(void) {
-	char *buffer, *depend;
-	FILE* fp;
+void enabledependency(char* depend) {
+	/* Only send '+' if the dependency is not already enabled */
+	if (!isenabled(depend)) {
+		sendcommand(depend, 1, "+");
 
-	if (!(fp = fopen("depends", "r")))
-		return;
+		enableddeps               = realloc(enableddeps, (nenableddeps + 1) * sizeof(char*));
+		enableddeps[nenableddeps] = strdup(depend);
+		nenableddeps++;
+	}
+}
 
-	if (!(buffer = loadbuffermalloc(fp, NULL)))
-		return;
+void disabledependency(char* depend) {
+	/* Only send '-' if the dependency is currently enabled */
+	if (isenabled(depend)) {
+		sendcommand(depend, 0, "-");
 
-	fclose(fp);
-
-	/* Loop through dependencies */
-	while ((depend = strsep(&buffer, "\n"))) {
-		depend = strip(depend);
-		if (*depend == '\0')
-			continue;
-
-		/* Only send '-' if the dependency is currently enabled */
-		if (isenabled(depend)) {
-			sendcommand(depend, 0, "-");
-			disabledependency(depend);
+		for (int i = 0; i < nenableddeps; i++) {
+			if (strcmp(enableddeps[i], depend) == 0) {
+				free(enableddeps[i]);
+				enableddeps[i] = enableddeps[--nenableddeps];
+				return;
+			}
 		}
 	}
-	free(buffer);
 }

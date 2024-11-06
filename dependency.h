@@ -15,8 +15,10 @@ extern struct supervisor* supervisors;
 extern int                nsupervisors;
 
 /* Functions */
-void enabledependencies(void);
-void disabledependencies(void);
+void loopdependencies(void (*callback)(char*));
+void disabledependency(char* depend);
+void enabledependency(char* depend);
+
 void handlecommand(int command);
 void handlechild(pid_t pid, int stat);
 

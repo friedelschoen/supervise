@@ -18,9 +18,9 @@ enum {
 /* Global variables */
 extern time_t      status_change;
 extern int         status;
-extern const char* servicename;
 extern pid_t       service;
 extern int         restart;
+extern const char* servicedir;
 extern char        myself[PATH_MAX];
 
 /* Functions */

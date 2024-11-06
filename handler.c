@@ -13,7 +13,6 @@ void handlecommand(int command) {
 	if (!isgraph(command))
 		return;
 
-	printf("%s - %c\n", servicename, command);
 	switch (command) {
 		case 's': /* Start command */
 			restart = 1;
@@ -55,5 +54,5 @@ void handlechild(pid_t pid, int stat) {
 	if (restart || dependency_count > 0)
 		startservice();
 	else
-		disabledependencies();
+		loopdependencies(disabledependency);
 }

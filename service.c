@@ -16,7 +16,7 @@ void startservice(void) {
 	if (status == STATUS_RUNNING)
 		return;
 
-	enabledependencies();
+	loopdependencies(enabledependency);
 
 	while ((service = fork()) == -1) {
 		fprintf(stderr, "warn: unable to fork\n");

@@ -7,6 +7,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,8 +21,8 @@ int         restart       = 0;
 pid_t       service       = 0;
 time_t      status_change = 0;
 int         status        = -1;
+const char* servicedir    = NULL;
 char        myself[PATH_MAX];
-const char* servicename = 0;
 
 
 void controlloop(void) {
@@ -81,7 +82,8 @@ static void sigchild(int signum) {
 
 int main(int argc, char** argv) {
 	int         nostart = 0;
-	const char* servicedir;
+	const char* svdir;
+	char        path[PATH_MAX];
 
 	signal(SIGCHLD, sigchild);
 
@@ -101,13 +103,42 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 
-	servicedir = argv[0];
-	if (chdir(servicedir) != 0) {
-		perror("error: could not change directory");
-		return 1;
+	if ((svdir = getenv("SVDIR")) && *svdir) {
+		servicedir = svdir;
+	} else {
+		// Calculate absolute path for input_path
+		if (!realpath(argv[0], path)) {
+			fprintf(stderr, "error: unable to get realpath of servicedir: %s\n", strerror(errno));
+			return 1;
+		}
+
+		// Extract directory from the path
+		char* last_slash = strrchr(path, '/');
+		if (last_slash) {
+			*last_slash = '\0';
+		} else {
+			fprintf(stderr, "error: invalid path provided\n");
+			return 1;
+		}
+
+		servicedir = path;
+
+		// Set SVDIR to the computed servicedir if not initially set
+		if (setenv("SVDIR", servicedir, 1) != 0) {
+			fprintf(stderr, "error: unable to set SVDIR: %s\n", strerror(errno));
+			return 1;
+		}
 	}
 
-	servicename = strchr(servicedir, '/') ? strrchr(servicedir, '/') + 1 : servicedir;
+	if (chdir(argv[0]) != 0) {
+		char path2[PATH_MAX];
+		snprintf(path2, sizeof(path2), "%s/%s", servicedir, argv[0]);
+
+		if (chdir(path2) != 0) {
+			perror("error: could not change directory");
+			return 1;
+		}
+	}
 
 	mkdir("supervise", 0777);
 	setstatus(STATUS_WAITING);
