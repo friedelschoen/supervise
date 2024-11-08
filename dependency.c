@@ -80,7 +80,7 @@ static int sendcommand(const char* service, int startit, const char* command) {
 		return -1;
 	}
 
-	while (retries-- > 0 && write(control_fp, command, strlen(command)) >= 0) {
+	while (retries-- > 0 && write(control_fp, command, strlen(command)) == -1) {
 		if (errno != EAGAIN && errno != EWOULDBLOCK)
 			fprintf(stderr, "warn: unable to send command to %s: %s, retrying...\n", service,
 			        strerror(errno));

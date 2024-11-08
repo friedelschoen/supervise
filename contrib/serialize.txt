@@ -1,0 +1,11 @@
++--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+|     STATUS CHANGE     |  NANOSEC  |    PID    |PS|WU|TR|SR|
++--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+
+STATUS CHANGE = unix seconds + 4611686018427387914ULL (tai, big endian)
+NANOSEC = unix nanoseconds (written, never read)
+PID = current pid (little endian)
+PS = is paused (int boolean)
+WU = wants up ('u' if want up, 'd' if want down)
+TR = was terminated (int boolean)
+SR = state runit (0 is down, 1 is running, 2 is finishing)

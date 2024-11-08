@@ -1,27 +1,43 @@
 #include "supervise.h"
 
 #include "arg.h"
+#include "dependency.h"
 #include "handler.h"
 #include "service.h"
 
+#include <endian.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 
-int         restart       = 0;
-pid_t       service       = 0;
-time_t      status_change = 0;
-int         status        = -1;
-const char* servicedir    = NULL;
+#define TAI_OFFSET 4611686018427387914ULL /* seconds */
+
+int         restart            = 0;
+pid_t       service_pid        = 0;
+time_t      status_change      = 0;
+int         status             = -1;
+int         service_terminated = 0;
+const char* servicedir         = NULL;
 char        myself[PATH_MAX];
 
 const char* status_names[] = { "waiting", "terminated", "crashed", "error", "running" };
 
+/*
+% ls supervise
+|rw------- control	- w-opened FIFO
+.rw------- lock		- flock-locked file
+|rw------- ok		- w-opened FIFO
+.rw-r--r-- pid		- human-readable pid
+.rw-r--r-- stat     - human-readable status
+.rw-r--r-- status	- machine-readable status
+*/
 void supervise_setstatus(int stat) {
 	FILE* fp;
 
@@ -35,8 +51,50 @@ void supervise_setstatus(int stat) {
 		fprintf(stderr, "error: unable to open supervise/status: %s\n", strerror(errno));
 		return;
 	}
-	fwrite(&status, sizeof(status), 1, fp);
-	fwrite(&status_change, sizeof(status_change), 1, fp);
+
+	uint64_t tai_seconds = status_change + TAI_OFFSET;
+	tai_seconds          = htobe64(tai_seconds);    // Convert to big-endian
+
+	// Write STATUS CHANGE (TAI format, Little endian)
+	fwrite(&tai_seconds, sizeof(tai_seconds), 1, fp);
+
+	// Write NANOSEC (Unix nanoseconds)
+	uint32_t nanosec = 0;
+	fwrite(&nanosec, sizeof(nanosec), 1, fp);
+
+	// Write PID (Little endian)
+	uint32_t pid_be = htole32(service_pid);
+	fwrite(&pid_be, sizeof(pid_be), 1, fp);
+
+	// Write PS, WU, TR, SR fields as single bytes
+	uint8_t ps = 0;                                           /* is paused */
+	uint8_t wu = restart || dependency_count > 0 ? 'u' : 'd'; /* wants up */
+	uint8_t tr = service_terminated;                          /* is terminated */
+	uint8_t sr = status == STATUS_RUNNING; /* state (0 is down, 1 is running, 2 is finishing) */
+
+	fwrite(&ps, sizeof(ps), 1, fp);
+	fwrite(&wu, sizeof(wu), 1, fp);
+	fwrite(&tr, sizeof(tr), 1, fp);
+	fwrite(&sr, sizeof(sr), 1, fp);
+
+	fclose(fp);
+
+	if (!(fp = fopen("supervise/stat", "w+"))) {
+		fprintf(stderr, "error: unable to open supervise/stat: %s\n", strerror(errno));
+		return;
+	}
+
+	fprintf(fp, "%s", status_names[status]);
+	fclose(fp);
+
+	if (!(fp = fopen("supervise/pid", "w+"))) {
+		fprintf(stderr, "error: unable to open supervise/pid: %s\n", strerror(errno));
+		return;
+	}
+
+	if (status == STATUS_RUNNING) {
+		fprintf(fp, "%d", service_pid);
+	}
 	fclose(fp);
 }
 
@@ -134,6 +192,8 @@ __attribute__((noreturn)) void usage(int exitcode) {
 int main(int argc, char** argv) {
 	int nostart = 0;
 
+	int okfd = 0, lockfd = 0;
+
 	signal(SIGCHLD, sigchild);
 
 	if (!realpath(argv[0], myself))
@@ -169,11 +229,30 @@ int main(int argc, char** argv) {
 	mkdir("supervise", 0777);
 	supervise_setstatus(STATUS_WAITING);
 
+	mkfifo("supervise/ok", 0600);
+	if ((okfd = open("supervise/ok", O_RDONLY | O_NONBLOCK)) == -1) {
+		fprintf(stderr, "error: unable to open supervise/ok: %s\n", strerror(errno));
+		return 1;
+	}
+
+	if ((lockfd = open("supervise/lock", O_APPEND | O_CREAT, 0600)) == -1) {
+		fprintf(stderr, "error: unable to open supervise/lock: %s\n", strerror(errno));
+		return 1;
+	}
+	if (flock(lockfd, LOCK_EX | LOCK_NB)) {
+		fprintf(stderr, "error: unable to lock supervise/lock: %s\n", strerror(errno));
+		return 1;
+	}
+
 	if (!nostart) {
 		restart = 1;
 		service_start();
 	}
 
 	supervise_mainloop();
+
+	/* clean-up */
+	close(okfd);
+	close(lockfd);
 	return 0;
 }
