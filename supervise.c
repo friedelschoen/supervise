@@ -80,10 +80,43 @@ static void sigchild(int signum) {
 		handlechild(pid, stat);
 }
 
-int main(int argc, char** argv) {
-	int         nostart = 0;
+static int setservicedir(const char* inputservice) {
 	const char* svdir;
 	char        path[PATH_MAX];
+
+	if ((svdir = getenv("SVDIR")) && *svdir) {
+		servicedir = svdir;
+		return 0;
+	}
+
+	// Calculate absolute path for input_path
+	if (!realpath(inputservice, path)) {
+		fprintf(stderr, "error: unable to get realpath of servicedir: %s\n", strerror(errno));
+		return -1;
+	}
+
+	// Extract directory from the path
+	char* last_slash = strrchr(path, '/');
+	if (last_slash) {
+		*last_slash = '\0';
+	} else {
+		fprintf(stderr, "error: invalid path provided\n");
+		return -1;
+	}
+
+	servicedir = path;
+
+	// Set SVDIR to the computed servicedir if not initially set
+	if (setenv("SVDIR", servicedir, 1) != 0) {
+		fprintf(stderr, "error: unable to set SVDIR: %s\n", strerror(errno));
+		return -1;
+	}
+
+	return 0;
+}
+
+int main(int argc, char** argv) {
+	int nostart = 0;
 
 	signal(SIGCHLD, sigchild);
 
@@ -103,32 +136,7 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 
-	if ((svdir = getenv("SVDIR")) && *svdir) {
-		servicedir = svdir;
-	} else {
-		// Calculate absolute path for input_path
-		if (!realpath(argv[0], path)) {
-			fprintf(stderr, "error: unable to get realpath of servicedir: %s\n", strerror(errno));
-			return 1;
-		}
-
-		// Extract directory from the path
-		char* last_slash = strrchr(path, '/');
-		if (last_slash) {
-			*last_slash = '\0';
-		} else {
-			fprintf(stderr, "error: invalid path provided\n");
-			return 1;
-		}
-
-		servicedir = path;
-
-		// Set SVDIR to the computed servicedir if not initially set
-		if (setenv("SVDIR", servicedir, 1) != 0) {
-			fprintf(stderr, "error: unable to set SVDIR: %s\n", strerror(errno));
-			return 1;
-		}
-	}
+	setservicedir(argv[0]);
 
 	if (chdir(argv[0]) != 0) {
 		char path2[PATH_MAX];
