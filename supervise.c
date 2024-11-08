@@ -1,21 +1,17 @@
 #include "supervise.h"
 
 #include "arg.h"
-#include "dependency.h"
+#include "handler.h"
 #include "service.h"
-#include "utils.h"
 
 #include <errno.h>
 #include <fcntl.h>
-#include <limits.h>
 #include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
-#include <unistd.h>
-
 
 int         restart       = 0;
 pid_t       service       = 0;
@@ -24,19 +20,37 @@ int         status        = -1;
 const char* servicedir    = NULL;
 char        myself[PATH_MAX];
 
+const char* status_names[] = { "waiting", "terminated", "crashed", "error", "running" };
 
-void controlloop(void) {
+void supervise_setstatus(int stat) {
+	FILE* fp;
+
+	if (stat == status)
+		return;
+
+	status        = stat;
+	status_change = time(NULL);
+
+	if (!(fp = fopen("supervise/status", "w+"))) {
+		fprintf(stderr, "error: unable to open supervise/status: %s\n", strerror(errno));
+		return;
+	}
+	fwrite(&status, sizeof(status), 1, fp);
+	fwrite(&status_change, sizeof(status_change), 1, fp);
+	fclose(fp);
+}
+
+void supervise_mainloop(void) {
 	char  command;
-	int   stat, ret;
+	int   fd, stat, ret;
 	pid_t pid;
 
 	/* Create control FIFO for receiving commands */
 	mkfifo("supervise/control", 0755);
 
 	/* Open the FIFO in non-blocking mode */
-	int fd = open("supervise/control", O_RDONLY | O_NONBLOCK);
-	if (fd == -1) {
-		perror("Error opening FIFO");
+	if ((fd = open("supervise/control", O_RDONLY | O_NONBLOCK)) == -1) {
+		fprintf(stderr, "error: unable to open supervise/control: %s\n", strerror(errno));
 		return;
 	}
 
@@ -46,7 +60,7 @@ void controlloop(void) {
 
 	while (1) {
 		if ((pid = waitpid(-1, &stat, WNOHANG)) > 0)
-			handlechild(pid, stat);
+			handler_child(pid, stat);
 
 		if ((ret = poll(&pfd, 1, POLLINTERVAL)) <= 0)
 			continue;
@@ -56,11 +70,12 @@ void controlloop(void) {
 			int n;
 
 			while ((n = read(fd, &command, 1)) > 0)
-				handlecommand(command);
+				handler_command(command);
 
 			if (n == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
 				/* Error reading from FIFO */
-				perror("Error reading FIFO");
+				fprintf(stderr, "error: unable to read from supervise/control: %s\n",
+				        strerror(errno));
 				break;
 			}
 		} else if (pfd.revents & POLLHUP) {
@@ -77,11 +92,12 @@ static void sigchild(int signum) {
 	int   stat;
 
 	if ((pid = waitpid(-1, &stat, WNOHANG)) > 0)
-		handlechild(pid, stat);
+		handler_child(pid, stat);
 }
 
 static int setservicedir(const char* inputservice) {
 	const char* svdir;
+	char*       base;
 	char        path[PATH_MAX];
 
 	if ((svdir = getenv("SVDIR")) && *svdir) {
@@ -91,18 +107,13 @@ static int setservicedir(const char* inputservice) {
 
 	// Calculate absolute path for input_path
 	if (!realpath(inputservice, path)) {
-		fprintf(stderr, "error: unable to get realpath of servicedir: %s\n", strerror(errno));
+		fprintf(stderr, "error: unable to resolve path of servicedir: %s\n", strerror(errno));
 		return -1;
 	}
 
 	// Extract directory from the path
-	char* last_slash = strrchr(path, '/');
-	if (last_slash) {
-		*last_slash = '\0';
-	} else {
-		fprintf(stderr, "error: invalid path provided\n");
-		return -1;
-	}
+	if ((base = strrchr(path, '/')))
+		*base = '\0';
 
 	servicedir = path;
 
@@ -115,6 +126,11 @@ static int setservicedir(const char* inputservice) {
 	return 0;
 }
 
+__attribute__((noreturn)) void usage(int exitcode) {
+	printf("usage: supervise [-h] <directory>\n");
+	exit(exitcode);
+}
+
 int main(int argc, char** argv) {
 	int nostart = 0;
 
@@ -125,6 +141,8 @@ int main(int argc, char** argv) {
 
 	ARGBEGIN
 	switch (OPT) {
+		case 'h':
+			usage(0);
 		case 's':
 			nostart = 1;
 			break;
@@ -133,7 +151,7 @@ int main(int argc, char** argv) {
 
 	if (argc == 0) {
 		fprintf(stderr, "error: too few arguments.\n");
-		return 1;
+		usage(1);
 	}
 
 	setservicedir(argv[0]);
@@ -143,19 +161,19 @@ int main(int argc, char** argv) {
 		snprintf(path2, sizeof(path2), "%s/%s", servicedir, argv[0]);
 
 		if (chdir(path2) != 0) {
-			perror("error: could not change directory");
+			fprintf(stderr, "error: could not change directory: %s\n", strerror(errno));
 			return 1;
 		}
 	}
 
 	mkdir("supervise", 0777);
-	setstatus(STATUS_WAITING);
+	supervise_setstatus(STATUS_WAITING);
 
 	if (!nostart) {
 		restart = 1;
-		startservice();
+		service_start();
 	}
 
-	controlloop();
+	supervise_mainloop();
 	return 0;
 }

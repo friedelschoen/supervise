@@ -1,5 +1,5 @@
 #pragma once
 
 /* Functions for starting and stopping the service */
-void startservice(void);
-void stopservice(void);
+void service_start(void);
+void service_stop(void);

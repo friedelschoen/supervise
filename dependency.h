@@ -15,11 +15,7 @@ extern struct supervisor* supervisors;
 extern int                nsupervisors;
 
 /* Functions */
-void loopdependencies(void (*callback)(char*));
-void disabledependency(char* depend);
-void enabledependency(char* depend);
-
-void handlecommand(int command);
-void handlechild(pid_t pid, int stat);
-
-void startsupervisor(struct supervisor* service);
+void dependency_iterator(void (*callback)(const char*));
+void dependency_disable(const char* depend);
+void dependency_enable(const char* depend);
+int  dependency_start(struct supervisor* service);

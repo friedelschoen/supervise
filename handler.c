@@ -1,58 +1,53 @@
+#include "handler.h"
 
 #include "dependency.h"
 #include "service.h"
 #include "supervise.h"
-#include "utils.h"
 
 #include <ctype.h>
-#include <stdio.h>
 #include <sys/wait.h>
 
 
-void handlecommand(int command) {
+void handler_command(int command) {
 	if (!isgraph(command))
 		return;
 
 	switch (command) {
 		case 's': /* Start command */
 			restart = 1;
-			startservice();
+			service_start();
 			break;
 		case 't': /* Stop command */
 			restart = 0;
-			stopservice();
+			service_stop();
 			break;
 		case '+': /* Dependency + */
 			dependency_count++;
 			if (dependency_count > 0)
-				startservice();
+				service_start();
 			break;
 		case '-': /* Dependency - */
 			dependency_count--;
 			if (dependency_count == 0)
-				stopservice();
-			break;
-		default:
-			fprintf(stderr, "warn: unknown command: %c\n", command);
+				service_stop();
 			break;
 	}
 }
 
-void handlechild(pid_t pid, int stat) {
+void handler_child(pid_t pid, int stat) {
 	for (int i = 0; i < nsupervisors; i++)
 		if (pid == supervisors[i].pid) {
-			printf("supervisor %s stopped\n", supervisors[i].name);
-			startsupervisor(&supervisors[i]);
+			dependency_start(&supervisors[i]);
 			return;
 		}
 
 	if (status != STATUS_RUNNING || pid != service)
 		return;
 
-	setstatus(WIFSIGNALED(stat) ? STATUS_CRASHED : STATUS_EXITED);
+	supervise_setstatus(WIFSIGNALED(stat) ? STATUS_CRASHED : STATUS_EXITED);
 
 	if (restart || dependency_count > 0)
-		startservice();
+		service_start();
 	else
-		loopdependencies(disabledependency);
+		dependency_iterator(dependency_disable);
 }

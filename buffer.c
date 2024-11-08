@@ -3,7 +3,7 @@
 #include <errno.h>
 #include <stdlib.h>
 
-char* loadbuffermalloc(FILE* fp, size_t* pbuflen) {
+char* malloc_load_buffer(FILE* fp, size_t* pbuflen) {
 	size_t buflen;
 	char*  buffer;
 	fseek(fp, 0, SEEK_END);

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <limits.h>
-#include <sys/types.h>
 #include <time.h>
 
 #define POLLINTERVAL 10000 /* poll every 10 seconds */
@@ -24,4 +23,5 @@ extern const char* servicedir;
 extern char        myself[PATH_MAX];
 
 /* Functions */
-void controlloop(void);
+void supervise_mainloop(void);
+void supervise_setstatus(int stat);

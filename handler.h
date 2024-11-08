@@ -2,5 +2,5 @@
 
 #include <unistd.h>
 
-void handlecommand(int command);
-void handlechild(pid_t pid, int stat);
+void handler_command(int command);
+void handler_child(pid_t pid, int stat);
